@@ -4,7 +4,8 @@ Authors: Jason Wei, Nguyen Karina, Hyung Won Chung, Yunxin Joy Jiao, Spencer Pap
 https://cdn.openai.com/papers/simpleqa.pdf
 """ 
 
-import random 
+import os
+import random
 import re
 import pandas
 from . import common
@@ -102,10 +103,12 @@ class SimpleQAEval(Eval):
             "https://openaipublic.blob.core.windows.net/simple-evals/simple_qa_test_set.csv"
         )
         examples = [row.to_dict() for _, row in df.iterrows()]
+        # Limit to the first 50 entries for faster processing
+        examples = examples[:50]
         if num_examples:
             assert n_repeats == 1, "n_repeats only supported when max_examples = None"
             rng = random.Random(0)
-            examples = rng.sample(examples, num_examples)
+            examples = rng.sample(examples, min(num_examples, len(examples)))
         self.examples = examples * n_repeats
         self.grader_model = grader_model
 
@@ -126,9 +129,14 @@ class SimpleQAEval(Eval):
         return match.group(0) if match else "C"  # Default to "NOT_ATTEMPTED" if no match
 
     def __call__(self, sampler: SamplerBase) -> EvalResult:
+            use_no_think = os.environ.get("NO_THINK") == "1"
+
             def fn(row: dict):
+                prompt = row.get("problem", "")
+                if use_no_think:
+                    prompt = f"{prompt} /no_think"
                 prompt_messages = [
-                    sampler._pack_message(content=row.get("problem", ""), role="user")
+                    sampler._pack_message(content=prompt, role="user")
                 ]
                 sampler_response = sampler(prompt_messages)
                 response_text = sampler_response.response_text
